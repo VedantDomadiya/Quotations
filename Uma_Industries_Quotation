@@ -1,0 +1,1012 @@
+public static void GenerateQuotation_UmaIndustries(Int64 pQuotID)
+        {
+            HttpContext.Current.Session["PrintModule"] = "quotation";
+            string htmlOpen = "", htmlClose = "";
+            htmlOpen = @"<html xmlns='http://www.w3.org/1999/xhtml'>";
+            htmlOpen += "<body>";
+            string flagPrintHeader = "no";
+            Int64 TopMargin = 30, BottomMargin = 30, LeftMargin = 30, RightMargin = 30;
+            Int64 ProdDetail_Lines = 0;
+            myPdfConstruct pdf = new myPdfConstruct();
+            // ----------------------------------------------------------
+            Entity.Authenticate objAuth = new Entity.Authenticate();
+            objAuth = (Entity.Authenticate)HttpContext.Current.Session["logindetail"];
+            // ----------------------------------------------------------
+
+            List<Entity.DocPrinterSettings> lstPrinter = new List<Entity.DocPrinterSettings>();
+            lstPrinter = BAL.CommonMgmt.GetDocPrinterSettings(HttpContext.Current.Session["LoginUserID"].ToString(), "Quotation");
+
+            if (flagPrintHeader == "yes" || flagPrintHeader == "y")
+            {
+                if (!String.IsNullOrEmpty(lstPrinter[0].PrintingMargin_WithHeader) && lstPrinter[0].PrintingMargin_WithHeader.Trim() != "0,0")
+                {
+                    String[] tmpary = lstPrinter[0].PrintingMargin_WithHeader.Trim().Split(',');
+                    TopMargin = Convert.ToInt64(tmpary[0].ToString());
+                    BottomMargin = Convert.ToInt64(tmpary[1].ToString());
+                }
+            }
+            else
+            {
+                if (!String.IsNullOrEmpty(lstPrinter[0].PrintingMargin_Plain) && lstPrinter[0].PrintingMargin_Plain.Trim() != "0,0")
+                {
+                    String[] tmpary = lstPrinter[0].PrintingMargin_Plain.Trim().Split(',');
+                    TopMargin = (Int64)Convert.ToDouble(tmpary[0].ToString());
+                    BottomMargin = (Int64)Convert.ToDouble(tmpary[1].ToString());
+                }
+            }
+
+            PdfPCell cell;
+
+            PdfPTable tableHeader = new PdfPTable(2);
+            PdfPTable tblMember = new PdfPTable(2);
+            PdfPTable tblDetail = new PdfPTable(8);
+            PdfPTable tblSubject = new PdfPTable(1);
+            PdfPTable tblHeader = new PdfPTable(1);
+            PdfPTable tblFooter = new PdfPTable(2);
+            PdfPTable tblSignOff = new PdfPTable(1);
+            // ===========================================================================================
+            // Retrieving Quotation Master & Detail Data
+            // --------------------------------------------------------------------------------------------
+            int TotalCount = 0;
+            List<Entity.Quotation> lstQuot = new List<Entity.Quotation>();
+            lstQuot = BAL.QuotationMgmt.GetQuotationList(pQuotID, HttpContext.Current.Session["LoginUserID"].ToString(), 1, 1000, out TotalCount);
+            // -------------------------------------------------------------------------------------------------------------
+            DataTable dtItem = new DataTable();
+            if (lstQuot.Count > 0)
+                dtItem = BAL.QuotationDetailMgmt.GetQuotationDetail(lstQuot[0].QuotationNo);
+            //-------------------------------------------------------------------------------------------------------------
+            List<Entity.SalesTaxDetail> lstTax = new List<Entity.SalesTaxDetail>();
+            if (lstQuot.Count > 0)
+                lstTax = BAL.SalesBillMgmt.GetTaxDetailHSNWiseForSalesBill("quotation", lstQuot[0].QuotationNo);
+            // -------------------------------------------------------------------------------------------------------------
+            int totrec = 0;
+            List<Entity.Customer> lstCust = new List<Entity.Customer>();
+            if (lstQuot.Count > 0)
+                lstCust = BAL.CustomerMgmt.GetCustomerList(lstQuot[0].CustomerID, "admin", 1, 1000, out totrec);
+
+            DataTable dtContact = new DataTable();
+            if (lstQuot.Count > 0)
+                dtContact = BAL.CustomerContactsMgmt.GetCustomerContactsDetail(lstQuot[0].CustomerID);
+            //-------------------------------------------------------------------------------------------------
+            List<Entity.OrganizationStructure> lstOrg = new List<Entity.OrganizationStructure>();
+            if (lstQuot.Count > 0)
+                lstOrg = BAL.OrganizationStructureMgmt.GetOrganizationStructureList("001", 1, 1000, out totrec);
+            // -------------------------------------------------------------------------------------------------------------
+            List<Entity.OrganizationBank> lstBank = new List<Entity.OrganizationBank>();
+            if (lstQuot.Count > 0)
+                lstBank = BAL.OrganizationStructureMgmt.GetOrganizationBankListByCompID(lstQuot[0].CompanyID, 1, 1000, out totrec);
+            // ------------------------------------------------------------------------------
+            List<Entity.OtherCharge> lstCharge = new List<Entity.OtherCharge>();
+            lstCharge = BAL.OtherChargeMgmt.GetOtherChargeList();
+            // ------------------------------------------------------------------------------
+            Document pdfDoc = new Document(iTextSharp.text.PageSize.A4);
+            pdfDoc.SetMargins(LeftMargin, RightMargin, TopMargin, BottomMargin);
+            //Int64 ProdDetail_Lines = 20;
+            ProdDetail_Lines = (lstPrinter.Count > 0) ? lstPrinter[0].ProdDetail_Lines : 20;
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            // Declaring PDF Document Object
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            pdfDoc.SetPageSize(new iTextSharp.text.Rectangle(iTextSharp.text.PageSize.A4.Width, iTextSharp.text.PageSize.A4.Height));
+
+            pdfDoc.AddCreationDate();
+            //Document pdfDoc = pdf.initiatePage(lstPrinter);
+            MemoryStream ms = new MemoryStream();
+            PdfWriter pdfw = PdfWriter.GetInstance(pdfDoc, ms);
+            pdfw.PdfVersion = PdfWriter.VERSION_1_6;
+            pdfw.CompressionLevel = PdfStream.BEST_COMPRESSION;
+            pdfw.SetFullCompression();
+
+            // ===========================================================================================
+            // Printing Heading
+            // ===========================================================================================
+
+            if (lstQuot.Count > 0)
+            {
+                // -------------------------------------------------------------------------------------
+                //  Defining : Quotation Master Information
+                // -------------------------------------------------------------------------------------
+                #region Section >>>> Quotation Master Information
+                int[] column_tblMember = { 73, 27 };
+                tblMember.SetWidths(column_tblMember);
+                tblMember.SpacingBefore = 8f;
+                tblMember.LockedWidth = true;
+
+
+                //------------------Steelman image-----------------
+                PdfPTable tblESignature = new PdfPTable(1);
+                int[] column_tblESignature = { 100 };
+                tblESignature.SetWidths(column_tblESignature);
+                int fileCount = 0;
+                string tmpFile = System.Web.Hosting.HostingEnvironment.MapPath("~/images/CompanyLogo/") + "\\proforma.png";
+                //string tmpFile1 = System.Web.Hosting.HostingEnvironment.MapPath("~/images") + "\\eStamp.png";
+
+                if (File.Exists(tmpFile))
+                {
+                    if (File.Exists(tmpFile))   //Signature print
+                    {
+                        PdfPTable tblSign = new PdfPTable(1);
+                        iTextSharp.text.Image eSign = iTextSharp.text.Image.GetInstance(tmpFile);
+                        eSign.ScaleAbsolute(65, 65);
+
+                        tblSign.AddCell(pdf.setCellFixImage(eSign, pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf2, 1, Element.ALIGN_CENTER, Element.ALIGN_TOP, Rectangle.NO_BORDER));
+
+                        tblESignature.AddCell(pdf.setCell(tblSign, pdf.WhiteBaseColor, pdf.objContentFontDataBlack, 0, 1, Element.ALIGN_CENTER, Element.ALIGN_TOP, Rectangle.NO_BORDER));
+                        fileCount = fileCount + 1;
+                    }
+                }
+                tblESignature.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.objContentFontDataBlack, 0, 1, Element.ALIGN_CENTER, Element.ALIGN_TOP, Rectangle.NO_BORDER));
+
+                PdfPTable tblCompany = new PdfPTable(1);
+                int[] column_tblCompany = { 100 };
+                tblCompany.SetWidths(column_tblCompany);
+
+                tblCompany.AddCell(pdf.setCell(lstOrg[0].OrgName.ToUpper(), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                tblCompany.AddCell(pdf.setCell(lstOrg[0].Address, pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                tblCompany.AddCell(pdf.setCell(lstOrg[0].CityName + " - " + lstOrg[0].Pincode + ", " + lstOrg[0].StateName.ToUpper(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                //tblCompany.AddCell(pdf.setCell("Quotation To " , pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_BOTTOM, 1));
+
+                PdfPTable tblSteel = new PdfPTable(2);
+                int[] column_tblSteel = { 20, 80 };
+                tblSteel.SetWidths(column_tblSteel);
+
+                tblSteel.AddCell(pdf.setCell(tblESignature, pdf.WhiteBaseColor, pdf.fnCalibriBold9, 0, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                tblSteel.AddCell(pdf.setCell(tblCompany, pdf.WhiteBaseColor, pdf.fnCalibriBold9, 0, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                tblSteel.AddCell(pdf.setCell("Quotation To ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 2, Element.ALIGN_LEFT, Element.ALIGN_BOTTOM, 1));
+                tblSteel.AddCell(pdf.setCell(lstCust[0].CustomerName, pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf2, 2, Element.ALIGN_LEFT, Element.ALIGN_TOP, Rectangle.NO_BORDER));
+                if (!String.IsNullOrEmpty(lstCust[0].Address.Trim() + lstCust[0].Area.Trim()))
+                    tblSteel.AddCell(pdf.setCell(lstCust[0].Address + lstCust[0].Area + ",", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf2, 2, Element.ALIGN_LEFT, Element.ALIGN_TOP, Rectangle.NO_BORDER));
+                else
+                    tblSteel.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf2, 2, Element.ALIGN_LEFT, Element.ALIGN_TOP, Rectangle.NO_BORDER));
+
+                if (!String.IsNullOrEmpty(lstCust[0].CityName.Trim() + lstCust[0].Pincode.Trim()))
+                    tblSteel.AddCell(pdf.setCell(lstCust[0].CityName + "," + lstCust[0].Pincode, pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf2, 2, Element.ALIGN_LEFT, Element.ALIGN_TOP, Rectangle.NO_BORDER));
+                else
+                    tblSteel.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf2, 2, Element.ALIGN_LEFT, Element.ALIGN_TOP, Rectangle.NO_BORDER));
+
+                PdfPTable tblNested2 = new PdfPTable(2);
+                int[] column_tblNested2 = { 50, 50 };
+                tblNested2.SetWidths(column_tblNested2);
+
+                tblNested2.AddCell(pdf.setCell("Quotation No.", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                tblNested2.AddCell(pdf.setCell("Date", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                tblNested2.AddCell(pdf.setCell(lstQuot[0].QuotationNo, pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 14));
+                tblNested2.AddCell(pdf.setCell(lstQuot[0].QuotationDate.ToString("dd-MMM-yyyy"), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 14));
+                tblNested2.AddCell(pdf.setCell("Mode/Terms of Payments", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                tblNested2.AddCell(pdf.setCell("Buyer's Reference Number", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                tblNested2.AddCell(pdf.setCell(lstQuot[0].AdditionalRemark, pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 14));
+                tblNested2.AddCell(pdf.setCell(lstQuot[0].InquiryNo, pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 14));
+                tblNested2.AddCell(pdf.setCell("Valid Till", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_TOP, 13));
+                tblNested2.AddCell(pdf.setCell("Destination", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                tblNested2.AddCell(pdf.setCell(lstQuot[0].QuotationDate.AddMonths(1).ToString("dd-MMM-yyyy"), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_TOP, 14));
+                tblNested2.AddCell(pdf.setCell(lstCust[0].CityName, pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_TOP, 14));
+
+                tblNested2.AddCell(pdf.setCell("Currency", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_TOP, 13));
+                tblNested2.AddCell(pdf.setCell("Exchange Rate", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                tblNested2.AddCell(pdf.setCell(!String.IsNullOrEmpty(lstQuot[0].CurrencyName) ? lstQuot[0].CurrencyName : "INR", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_TOP, 14));
+                tblNested2.AddCell(pdf.setCell(!String.IsNullOrEmpty(lstQuot[0].ExchangeRate.ToString()) ? lstQuot[0].ExchangeRate.ToString() : "", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_TOP, 14));
+
+                tblMember.AddCell(pdf.setCell("Quotation", pdf.WhiteBaseColor, pdf.fnCalibriBold10, pdf.paddingOf4, 4, Element.ALIGN_CENTER, Element.ALIGN_TOP, 0));
+                tblMember.AddCell(pdf.setCell(tblSteel, pdf.WhiteBaseColor, pdf.objContentFontDataBlack, 0, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                tblMember.AddCell(pdf.setCell(tblNested2, pdf.WhiteBaseColor, pdf.objContentFontDataBlack, 0, 1, Element.ALIGN_LEFT, Element.ALIGN_TOP, 13));
+                #endregion
+
+                // -------------------------------------------------------------------------------------
+                //  Defining : Quotation Product Detail
+                // -------------------------------------------------------------------------------------
+                #region Section >>>> Quotation Product Detail
+
+                var sumDis = dtItem.AsEnumerable().Sum(x => x.Field<decimal>("DiscountAmt"));
+                if (sumDis > 0)
+                {
+                    int[] column_tblNested = { 5, 39, 10, 8, 10, 9, 8, 11 };
+                    tblDetail.SetWidths(column_tblNested);
+                }
+                else
+                {
+                    int[] column_tblNested = { 5, 44, 10, 8, 12, 1, 8, 12 };
+                    tblDetail.SetWidths(column_tblNested);
+                }
+                tblDetail.SpacingBefore = 0f;
+                tblDetail.LockedWidth = true;
+                tblDetail.HorizontalAlignment = Element.ALIGN_CENTER;
+
+                tblDetail.AddCell(pdf.setCell("Sr." + "\n" + "No", pdf.LightBlueBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 15));
+                tblDetail.AddCell(pdf.setCell("Description Of Goods", pdf.LightBlueBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 15));
+                tblDetail.AddCell(pdf.setCell("HSN/SAC", pdf.LightBlueBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 15));
+                tblDetail.AddCell(pdf.setCell("Quantity", pdf.LightBlueBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 15));
+                tblDetail.AddCell(pdf.setCell("Rate", pdf.LightBlueBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 15));
+
+                if (sumDis > 0)
+                {
+                    tblDetail.AddCell(pdf.setCell("Discount %", pdf.LightBlueBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 15));
+                    tblDetail.AddCell(pdf.setCell("Per", pdf.LightBlueBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 15));
+                    tblDetail.AddCell(pdf.setCell("Amount", pdf.LightBlueBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 15));
+                }
+                else
+                {
+                    tblDetail.AddCell(pdf.setCell("Per", pdf.LightBlueBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 2, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 15));
+                    tblDetail.AddCell(pdf.setCell("Amount", pdf.LightBlueBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 15));
+                }
+
+                decimal totAmount = 0, taxAmount = 0, netAmount = 0, tmpAmount = 0, totalSpecLines = 0, quantity = 0;
+                int totalRowCount = 0;
+                netAmount = lstQuot[0].NetAmt;
+
+                string strunicode = "";
+                switch (lstQuot[0].CurrencySymbol.Trim())
+                {
+                    case "₹":
+                        strunicode = " \u20B9 ";    //Unicode Character for Rupees 
+                        break;
+                    case "":
+                        strunicode = " \u20B9 ";
+                        break;
+                    case "฿":                       //Thai Baht
+                        strunicode = " \u0E3F ";
+                        break;
+                    default:
+                        strunicode = lstQuot[0].CurrencySymbol.Trim();
+                        break;
+                }
+                BaseFont bfcurr = BaseFont.CreateFont("c:/windows/fonts/arial.ttf", BaseFont.IDENTITY_H, BaseFont.EMBEDDED);
+
+
+                for (int i = 0; i < dtItem.Rows.Count; i++)
+                {
+                    tmpAmount = (Convert.ToDecimal(dtItem.Rows[i]["Amount"]) + Convert.ToDecimal(dtItem.Rows[i]["HeaderDiscAmt"]));
+                    totAmount += Convert.ToDecimal(dtItem.Rows[i]["Amount"]);
+                    taxAmount += Convert.ToDecimal(dtItem.Rows[i]["TaxAmount"]);
+                    netAmount += Convert.ToDecimal(dtItem.Rows[i]["NetAmount"]);
+                    quantity += (Convert.ToDecimal(dtItem.Rows[i]["UnitQty"]));
+                    // ------------------------------------------------------------------
+                    string tmpVal = "", tmpProdAlias = "";
+                    tmpVal = dtItem.Rows[i]["ProductNameLong"].ToString();
+                    if (tmpVal.IndexOf("]") >= 0)
+                        tmpProdAlias = tmpVal.Substring(1, tmpVal.IndexOf("]") - 1) + " -";
+                    tblDetail.AddCell(pdf.setCell((i + 1).ToString(), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 12));
+                    tblDetail.AddCell(pdf.setCell(dtItem.Rows[i]["ProductName"].ToString(), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 8));
+                    tblDetail.AddCell(pdf.setCell(dtItem.Rows[i]["HSNCode"].ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 12));
+                    tblDetail.AddCell(pdf.setCell(Convert.ToInt32(dtItem.Rows[i]["Quantity"]).ToString(), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 12));
+                    tblDetail.AddCell(pdf.setCell(dtItem.Rows[i]["UnitRate"].ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 12));
+                    if (sumDis > 0)
+                    {
+                        tblDetail.AddCell(pdf.setCell(dtItem.Rows[i]["DiscountPer"].ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 12));
+                        tblDetail.AddCell(pdf.setCell(dtItem.Rows[i]["Unit"].ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 12));
+                        tblDetail.AddCell(pdf.setCell(Convert.ToDecimal(dtItem.Rows[i]["Amount"]).ToString("#,##0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    }
+                    else
+                    {
+                        tblDetail.AddCell(pdf.setCell(dtItem.Rows[i]["Unit"].ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 2, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 12));
+                        tblDetail.AddCell(pdf.setCell(tmpAmount.ToString("#,##0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    }
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                    tblDetail.AddCell(pdf.setCell(dtItem.Rows[i]["ProductSpecification"].ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_TOP, 8));
+
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_TOP, 12));
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+
+                    if (sumDis > 0)
+                    {
+                        tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                        tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                        tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                    }
+                    else
+                    {
+                        tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf3, 2, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                        tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                    }
+                }
+
+                //for (int i = 1; i < (13 - dtItem.Rows.Count); i++)
+                //{
+                if (ProdDetail_Lines > dtItem.Rows.Count)
+                {
+                    for (int i = 1; i <= (ProdDetail_Lines - dtItem.Rows.Count); i++)
+                    {
+                        tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                        tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                        tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                        tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                        tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                        if (sumDis > 0)
+                        {
+                            tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                            tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                            tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                        }
+                        else
+                        {
+                            tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf3, 2, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                            tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf3, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                        }
+                    }
+                }
+
+                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                if (lstQuot[0].DiscountAmt > 0)
+                    tblDetail.AddCell(pdf.setCell("Total Amount ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                else
+                    tblDetail.AddCell(pdf.setCell("Basic Amount ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                if (sumDis > 0)
+                {
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    //tblDetail.AddCell(pdf.setCell((lstQuot[0].BasicAmt + lstQuot[0].DiscountAmt).ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblDetail.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + (lstQuot[0].BasicAmt + lstQuot[0].DiscountAmt).ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT));
+                    else
+                        tblDetail.AddCell(pdf.setCell((lstQuot[0].BasicAmt + lstQuot[0].DiscountAmt).ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                }
+                else
+                {
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 2, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    //tblDetail.AddCell(pdf.setCell((lstQuot[0].BasicAmt + lstQuot[0].DiscountAmt).ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblDetail.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + (lstQuot[0].BasicAmt + lstQuot[0].DiscountAmt).ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT));
+                    else
+                        tblDetail.AddCell(pdf.setCell((lstQuot[0].BasicAmt + lstQuot[0].DiscountAmt).ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                }
+                if (lstQuot[0].DiscountAmt != 0)
+                {
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    tblDetail.AddCell(pdf.setCell("Discount Amount ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    if (sumDis > 0)
+                    {
+                        tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                        tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                        tblDetail.AddCell(pdf.setCell(lstQuot[0].DiscountAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    }
+                    else
+                    {
+                        tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 2, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                        tblDetail.AddCell(pdf.setCell(lstQuot[0].DiscountAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    }
+
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    tblDetail.AddCell(pdf.setCell("Basic Amount ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    if (sumDis > 0)
+                    {
+                        tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                        tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                        //tblDetail.AddCell(pdf.setCell(lstQuot[0].BasicAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+
+                        if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                            tblDetail.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].BasicAmt.ToString("0.00"), pdf.WhiteBaseColor, pdf.objContentFontDataBlack, pdf.paddingOf3, 1, Element.ALIGN_RIGHT));
+                        else
+                            tblDetail.AddCell(pdf.setCell(lstQuot[0].BasicAmt.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    }
+                    else
+                    {
+                        tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 2, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                        //tblDetail.AddCell(pdf.setCell(lstQuot[0].BasicAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                        if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                            tblDetail.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].BasicAmt.ToString("0.00"), pdf.WhiteBaseColor, pdf.objContentFontDataBlack, pdf.paddingOf3, 1, Element.ALIGN_RIGHT));
+                        else
+                            tblDetail.AddCell(pdf.setCell(lstQuot[0].BasicAmt.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                    }
+
+                }
+                if ((lstQuot[0].CGSTAmt + lstQuot[0].SGSTAmt) != 0)
+                {
+                    List<Entity.QuotationDetail> lstTaxList = new List<Entity.QuotationDetail>();
+                    lstTaxList = BAL.CommonMgmt.GetTaxSummary("quotation", "cgst", lstQuot[0].QuotationNo);
+                    for (int i = 0; i < lstTaxList.Count; i++)
+                    {
+                        if ((lstTaxList[i].CGSTAmt + lstTaxList[i].SGSTAmt) != 0)
+                        {
+                            tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            tblDetail.AddCell(pdf.setCell("CGST @" + lstTaxList[i].CGSTPer + " ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            if (sumDis > 0)
+                            {
+                                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                                tblDetail.AddCell(pdf.setCell(lstTaxList[i].CGSTAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            }
+                            else
+                            {
+                                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 2, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                                tblDetail.AddCell(pdf.setCell(lstTaxList[i].CGSTAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            }
+
+                            tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            tblDetail.AddCell(pdf.setCell("SGST @" + lstTaxList[i].SGSTPer + " ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            if (sumDis > 0)
+                            {
+                                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                                tblDetail.AddCell(pdf.setCell(lstTaxList[i].SGSTAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            }
+                            else
+                            {
+                                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 2, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                                tblDetail.AddCell(pdf.setCell(lstTaxList[i].SGSTAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            }
+                        }
+                    }
+                }
+                if (lstQuot[0].IGSTAmt != 0)
+                {
+                    List<Entity.QuotationDetail> lstTaxList = new List<Entity.QuotationDetail>();
+                    lstTaxList = BAL.CommonMgmt.GetTaxSummary("quotation", "igst", lstQuot[0].QuotationNo);
+                    for (int i = 0; i < lstTaxList.Count; i++)
+                    {
+                        if (lstTaxList[i].IGSTAmt != 0)
+                        {
+                            tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            tblDetail.AddCell(pdf.setCell("IGST @" + lstTaxList[i].IGSTPer + " ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            if (sumDis > 0)
+                            {
+                                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                                tblDetail.AddCell(pdf.setCell(lstTaxList[i].IGSTAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            }
+                            else
+                            {
+                                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 2, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                                tblDetail.AddCell(pdf.setCell(lstTaxList[i].IGSTAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 12));
+                            }
+                        }
+                    }
+                }
+                decimal total = lstQuot[0].IGSTAmt + lstQuot[0].SGSTAmt + lstQuot[0].CGSTAmt + lstQuot[0].BasicAmt;
+                var phrase3 = new Phrase();
+                phrase3 = new Phrase();
+                phrase3.Add(new Chunk(strunicode + total.ToString("#,##0.00"), new Font(bfcurr, 9)));
+
+                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 15));
+                tblDetail.AddCell(pdf.setCell("Total", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 15));
+                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 15));
+                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 15));
+                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 15));
+                if (sumDis > 0)
+                {
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 15));
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 15));
+                    tblDetail.AddCell(pdf.setCell(phrase3, pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 15));
+                }
+                else
+                {
+                    tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 2, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 15));
+                    tblDetail.AddCell(pdf.setCell(phrase3, pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 15));
+                }
+                // *-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-
+                PdfPTable tblTNC = new PdfPTable(1);
+                int[] column_tblTNC = { 100 };
+                tblTNC.SetWidths(column_tblTNC);
+                tblTNC.AddCell(pdf.setCell("Terms & Conditions :", pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_TOP, Rectangle.NO_BORDER));
+                tblTNC.AddCell(pdf.setCell(lstQuot[0].QuotationFooter, pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_TOP, Rectangle.NO_BORDER));
+
+                // ---------------------------------------------------------------------------------------------------------
+                PdfPTable tblAmount = new PdfPTable(2);
+                int[] column_tblAmount = { 50, 50 };
+                tblAmount.SetWidths(column_tblAmount);
+                // *-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
+                Decimal totGST = 0, befGST = 0, befAmt = 0, aftGST = 0, aftAmt = 0, totRNDOff = 0;
+
+                totAmount = lstQuot[0].BasicAmt;
+                totRNDOff = lstQuot[0].ROffAmt;
+                totGST = (lstQuot[0].SGSTAmt + lstQuot[0].CGSTAmt + lstQuot[0].IGSTAmt);
+
+
+                /* ---------------------------------------------------------- */
+                if (lstQuot[0].ChargeGSTAmt1 > 0)
+                {
+                    decimal chrgPer = lstCharge.Where(x => x.pkID == lstQuot[0].ChargeID1).Select(x => x.GST_Per).FirstOrDefault();
+                    befAmt += lstQuot[0].ChargeAmt1;
+                    befGST += lstQuot[0].ChargeGSTAmt1;
+                    tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeName1.ToString() + " :", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].ChargeAmt1.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    else
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeAmt1.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeName1.ToString() + " @" + chrgPer.ToString() + "% :", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].ChargeGSTAmt1.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    else
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeGSTAmt1.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+
+                }
+                if (lstQuot[0].ChargeGSTAmt2 > 0)
+                {
+                    decimal chrgPer = lstCharge.Where(x => x.pkID == lstQuot[0].ChargeID2).Select(x => x.GST_Per).FirstOrDefault();
+                    befAmt += lstQuot[0].ChargeAmt2;
+                    befGST += lstQuot[0].ChargeGSTAmt2;
+                    tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeName2.ToString() + " :", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].ChargeAmt2.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    else
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeAmt2.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeName2.ToString() + " @" + chrgPer.ToString() + "% :", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].ChargeGSTAmt2.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    else
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeGSTAmt2.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+
+                }
+                if (lstQuot[0].ChargeGSTAmt3 > 0)
+                {
+                    decimal chrgPer = lstCharge.Where(x => x.pkID == lstQuot[0].ChargeID3).Select(x => x.GST_Per).FirstOrDefault();
+                    befAmt += lstQuot[0].ChargeAmt3;
+                    befGST += lstQuot[0].ChargeGSTAmt3;
+                    tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeName3.ToString() + " :", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].ChargeAmt3.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    else
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeAmt3.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeName3.ToString() + " @" + chrgPer.ToString() + "% :", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].ChargeGSTAmt3.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    else
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeGSTAmt3.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+
+                }
+                if (lstQuot[0].ChargeGSTAmt4 > 0)
+                {
+                    decimal chrgPer = lstCharge.Where(x => x.pkID == lstQuot[0].ChargeID4).Select(x => x.GST_Per).FirstOrDefault();
+                    befAmt += lstQuot[0].ChargeAmt4;
+                    befGST += lstQuot[0].ChargeGSTAmt4;
+                    tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeName4.ToString() + " :", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].ChargeAmt4.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    else
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeAmt4.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeName4.ToString() + " @" + chrgPer.ToString() + "% :", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].ChargeGSTAmt4.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    else
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeGSTAmt4.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+
+                }
+                if (lstQuot[0].ChargeGSTAmt5 > 0)
+                {
+                    decimal chrgPer = lstCharge.Where(x => x.pkID == lstQuot[0].ChargeID5).Select(x => x.GST_Per).FirstOrDefault();
+                    befAmt += lstQuot[0].ChargeAmt5;
+                    befGST += lstQuot[0].ChargeGSTAmt5;
+                    tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeName5.ToString() + " :", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].ChargeAmt5.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    else
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeAmt5.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeName5.ToString() + " @" + chrgPer.ToString() + "% :", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].ChargeGSTAmt5.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    else
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeGSTAmt5.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+
+                }
+                /* ---------------------------------------------------------- */
+
+                /* ---------------------------------------------------------- */
+                if (lstQuot[0].ChargeGSTAmt1 == 0 && lstQuot[0].ChargeAmt1 > 0)
+                {
+                    decimal chrgPer = lstCharge.Where(x => x.pkID == lstQuot[0].ChargeID1).Select(x => x.GST_Per).FirstOrDefault();
+                    string strChrgPer = (chrgPer > 0) ? " " + chrgPer.ToString() + "% " : " ";
+                    aftAmt += lstQuot[0].ChargeAmt1;
+                    tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeName1.ToString() + (chrgPer != Convert.ToDecimal(0.00) ? " @" + chrgPer.ToString() + "% :" : " :"), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].ChargeAmt1.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    else
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeAmt1.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                }
+                if (lstQuot[0].ChargeGSTAmt2 == 0 && lstQuot[0].ChargeAmt2 > 0)
+                {
+                    decimal chrgPer = lstCharge.Where(x => x.pkID == lstQuot[0].ChargeID2).Select(x => x.GST_Per).FirstOrDefault();
+                    aftAmt += lstQuot[0].ChargeAmt2;
+                    tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeName2.ToString() + (chrgPer != Convert.ToDecimal(0.00) ? " @" + chrgPer.ToString() + "% :" : " :"), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].ChargeAmt2.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    else
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeAmt2.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                }
+                if (lstQuot[0].ChargeGSTAmt3 == 0 && lstQuot[0].ChargeAmt3 > 0)
+                {
+                    decimal chrgPer = lstCharge.Where(x => x.pkID == lstQuot[0].ChargeID3).Select(x => x.GST_Per).FirstOrDefault();
+                    aftAmt += lstQuot[0].ChargeAmt3;
+                    tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeName3.ToString() + (chrgPer != Convert.ToDecimal(0.00) ? " @" + chrgPer.ToString() + "% :" : " :"), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].ChargeAmt3.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    else
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeAmt3.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                }
+                if (lstQuot[0].ChargeGSTAmt4 == 0 && lstQuot[0].ChargeAmt4 > 0)
+                {
+                    decimal chrgPer = lstCharge.Where(x => x.pkID == lstQuot[0].ChargeID4).Select(x => x.GST_Per).FirstOrDefault();
+                    aftAmt += lstQuot[0].ChargeAmt4;
+
+                    tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeName4.ToString() + (chrgPer != Convert.ToDecimal(0.00) ? " @" + chrgPer.ToString() + "% :" : " :"), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].ChargeAmt4.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    else
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeAmt4.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                }
+                if (lstQuot[0].ChargeGSTAmt5 == 0 && lstQuot[0].ChargeAmt5 > 0)
+                {
+                    decimal chrgPer = lstCharge.Where(x => x.pkID == lstQuot[0].ChargeID5).Select(x => x.GST_Per).FirstOrDefault();
+                    aftAmt += lstQuot[0].ChargeAmt5;
+
+                    tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeName5.ToString() + (chrgPer != Convert.ToDecimal(0.00) ? " @" + chrgPer.ToString() + "% :" : " :"), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].ChargeAmt5.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    else
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].ChargeAmt5.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                }
+                /* ---------------------------------------------------------- */
+                if (lstQuot[0].ROffAmt != 0)
+                {
+                    tblAmount.AddCell(pdf.setCell("Round Off :", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                        tblAmount.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].ROffAmt.ToString("#,##0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                    else
+                        tblAmount.AddCell(pdf.setCell((lstQuot[0].ROffAmt).ToString("#,##0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 0));
+                }
+                tblAmount.AddCell(pdf.setCell("Total Amount :", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_TOP, 0));
+                if (!String.IsNullOrEmpty(lstQuot[0].CurrencySymbol.Trim()))
+                    tblAmount.AddCell(pdf.setCell(lstQuot[0].CurrencySymbol.Trim() + " " + lstQuot[0].NetAmt.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, 3f, 1, Element.ALIGN_RIGHT, Element.ALIGN_TOP, 0));
+                else
+                    tblAmount.AddCell(pdf.setCell(lstQuot[0].NetAmt.ToString("0.00"), pdf.WhiteBaseColor, pdf.fnCalibri9, 3f, 1, Element.ALIGN_RIGHT, Element.ALIGN_TOP, 0));
+
+                /* ---------------------------------------------------------- */
+                //*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
+
+                if (sumDis > 0)
+                {
+                    if ((aftAmt + aftGST + befAmt + befGST) != 0)
+                    {
+                        tblDetail.AddCell(pdf.setCell(tblTNC, pdf.WhiteBaseColor, pdf.objContentFontDataBlack, 0, 4, Element.ALIGN_LEFT, Element.ALIGN_TOP, 15));
+                        tblDetail.AddCell(pdf.setCell(tblAmount, pdf.WhiteBaseColor, pdf.objContentFontDataBlack, 0, 4, Element.ALIGN_LEFT, Element.ALIGN_TOP, 15));
+                    }
+                    else
+                        tblDetail.AddCell(pdf.setCell(tblTNC, pdf.WhiteBaseColor, pdf.objContentFontDataBlack, 0, 8, Element.ALIGN_LEFT, Element.ALIGN_TOP, 15));
+                }
+                else
+                {
+                    if ((aftAmt + aftGST + befAmt + befGST) != 0)
+                    {
+                        tblDetail.AddCell(pdf.setCell(tblTNC, pdf.WhiteBaseColor, pdf.objContentFontDataBlack, 0, 4, Element.ALIGN_LEFT, Element.ALIGN_TOP, 15));
+                        tblDetail.AddCell(pdf.setCell(tblAmount, pdf.WhiteBaseColor, pdf.objContentFontDataBlack, 0, 4, Element.ALIGN_LEFT, Element.ALIGN_TOP, 15));
+
+                    }
+                    else
+                        tblDetail.AddCell(pdf.setCell(tblTNC, pdf.WhiteBaseColor, pdf.objContentFontDataBlack, 0, 8, Element.ALIGN_LEFT, Element.ALIGN_TOP, 15));
+                }
+                // ****************************************************************
+                //netAmount = lstQuot[0].NetAmt;
+                //PdfPTable tblAmount1 = new PdfPTable(2);
+                //int[] column_tblAmount1 = { 60, 40 };
+                //tblAmount1.SetWidths(column_tblAmount1);
+                string NetAmtInWords = BAL.CommonMgmt.ConvertNumbertoWords((int)lstQuot[0].NetAmt);
+
+                tblDetail.AddCell(pdf.setCell("Amount Chargable (in Words)", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf3, 7, Element.ALIGN_LEFT, Element.ALIGN_TOP, 4));
+                tblDetail.AddCell(pdf.setCell("E. & O.E.", pdf.WhiteBaseColor, pdf.fnCalibriItalic8, pdf.paddingOf3, 1, Element.ALIGN_RIGHT, Element.ALIGN_TOP, 8));
+                tblDetail.AddCell(pdf.setCell(NetAmtInWords + " Only", pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf3, 3, Element.ALIGN_LEFT, Element.ALIGN_TOP, 6));
+                //if(!String.IsNullOrEmpty(lstQuot[0].CurrencyName.ToString()))
+                //    tblDetail.AddCell(pdf.setCell(lstQuot[0].CurrencyName+ " " + NetAmtInWords + " Only", pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf3, 3, Element.ALIGN_LEFT, Element.ALIGN_TOP, 6));
+                //else
+                //    tblDetail.AddCell(pdf.setCell("Indian Rupees " + NetAmtInWords + " Only", pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf3, 3, Element.ALIGN_LEFT, Element.ALIGN_TOP, 6));
+                tblDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf3, 5, Element.ALIGN_LEFT, Element.ALIGN_TOP, 10));
+
+                //var ph1 = new Phrase();
+                //ph1.Add(new Chunk("GSTIN No : ", pdf.fnCalibriBold8));
+                //ph1.Add(new Chunk("24BIQPK4338E1Z8", pdf.fnCalibri8));
+                //tblDetail.AddCell(pdf.setCell(ph1, pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf5, 8, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.BOX));
+                // *-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-
+                #endregion
+
+                #region Section >>>> SalesBill Tax Detail
+
+
+
+                // ****************************************************************
+                //netAmount = ((totAmount + befAmt) + (totGST + befGST) + aftAmt + totRNDOff);
+                netAmount = lstQuot[0].NetAmt;
+
+                //----------------IGST Table-----------------------
+                PdfPTable tblIGST;
+
+                tblIGST = new PdfPTable(5);
+                int[] column_tblIGST = { 39, 30, 8, 11, 12 };
+                tblIGST.SetWidths(column_tblIGST);
+                //string NetAmtInWords = BAL.CommonMgmt.ConvertNumbertoWords((int)netAmount);
+                tblIGST.AddCell(pdf.setCell("HSN/SAC", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                tblIGST.AddCell(pdf.setCell("Taxable Value", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                tblIGST.AddCell(pdf.setCell("Integrated Goods And Service Tax(IGST)", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 2, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                tblIGST.AddCell(pdf.setCell("Total Tax Amount", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+
+                tblIGST.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 4));
+                tblIGST.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 4));
+                tblIGST.AddCell(pdf.setCell("Rate(%)", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                tblIGST.AddCell(pdf.setCell("Amount (Rs)", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                tblIGST.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 8));
+                for (int i = 0; i < lstTax.Count; i++)
+                {
+                    if (lstTax[i].IGSTAmt > 0)
+                    {
+                        tblIGST.AddCell(pdf.setCell(lstTax[i].HSNCode.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                        tblIGST.AddCell(pdf.setCell(lstTax[i].TaxableValue.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                        tblIGST.AddCell(pdf.setCell(lstTax[i].IGSTPer.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                        tblIGST.AddCell(pdf.setCell(lstTax[i].IGSTAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                        tblIGST.AddCell(pdf.setCell(lstTax[i].TotalTax.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                    }
+                }
+                Decimal TaxAmount1 = 0;
+                TaxAmount1 = (lstQuot[0].SGSTAmt + lstQuot[0].CGSTAmt + lstQuot[0].IGSTAmt);
+                tblIGST.AddCell(pdf.setCell("Total ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                tblIGST.AddCell(pdf.setCell(lstQuot[0].BasicAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 5));
+                tblIGST.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                tblIGST.AddCell(pdf.setCell(lstQuot[0].IGSTAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                tblIGST.AddCell(pdf.setCell(TaxAmount1.ToString(), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+
+                tblIGST.AddCell(pdf.setCell("Total Price", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 4, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                tblIGST.AddCell(pdf.setCell(lstQuot[0].NetAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+
+                //----------------CGST-SGST Table-----------------------
+                PdfPTable tblCSGST;
+                tblCSGST = new PdfPTable(7);
+                int[] column_tblCSGST = { 25, 25, 8, 11, 8, 11, 12 };
+                tblCSGST.SetWidths(column_tblCSGST);
+                //string NetAmtInWords = BAL.CommonMgmt.ConvertNumbertoWords((int)netAmount);
+                tblCSGST.AddCell(pdf.setCell("HSN/SAC", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                tblCSGST.AddCell(pdf.setCell("Taxable Value", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                tblCSGST.AddCell(pdf.setCell("Central Tax(CGST) ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 2, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                tblCSGST.AddCell(pdf.setCell("State Tax(CGST)", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 2, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                tblCSGST.AddCell(pdf.setCell("Total Tax Amount", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+
+                tblCSGST.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 4));
+                tblCSGST.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 4));
+                tblCSGST.AddCell(pdf.setCell("Rate(%)", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                tblCSGST.AddCell(pdf.setCell("Amount (Rs)", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                tblCSGST.AddCell(pdf.setCell("Rate(%)", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                tblCSGST.AddCell(pdf.setCell("Amount (Rs)", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                tblCSGST.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 8));
+                for (int i = 0; i < lstTax.Count; i++)
+                {
+                    if ((lstTax[i].CGSTAmt + lstTax[i].SGSTAmt) > 0)
+                    {
+                        tblCSGST.AddCell(pdf.setCell(lstTax[i].HSNCode.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                        tblCSGST.AddCell(pdf.setCell(lstTax[i].TaxableValue.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                        tblCSGST.AddCell(pdf.setCell(lstTax[i].CGSTPer.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                        tblCSGST.AddCell(pdf.setCell(lstTax[i].CGSTAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                        tblCSGST.AddCell(pdf.setCell(lstTax[i].SGSTPer.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                        tblCSGST.AddCell(pdf.setCell(lstTax[i].SGSTAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                        tblCSGST.AddCell(pdf.setCell(lstTax[i].TotalTax.ToString(), pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                    }
+                }
+                Decimal TaxAmount = 0;
+                TaxAmount = (lstQuot[0].SGSTAmt + lstQuot[0].CGSTAmt + lstQuot[0].IGSTAmt);
+                tblCSGST.AddCell(pdf.setCell("Total ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_RIGHT, Element.ALIGN_MIDDLE, 13));
+                tblCSGST.AddCell(pdf.setCell(lstQuot[0].BasicAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 5));
+                tblCSGST.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                tblCSGST.AddCell(pdf.setCell(lstQuot[0].CGSTAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                tblCSGST.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                tblCSGST.AddCell(pdf.setCell(lstQuot[0].SGSTAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                tblCSGST.AddCell(pdf.setCell(TaxAmount.ToString(), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+
+
+                tblCSGST.AddCell(pdf.setCell("Total Price", pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 6, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                tblCSGST.AddCell(pdf.setCell(lstQuot[0].NetAmt.ToString(), pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf4, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 13));
+                #endregion
+                // *-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-
+
+                //  Defining : Terms & Condition
+                // -------------------------------------------------------------------------------------
+                #region Section >>>> Terms & Condition
+                PdfPTable tblFootDetail = new PdfPTable(2);
+                int[] column_tblFootDetail = { 40, 60 };
+                tblFootDetail.SetWidths(column_tblFootDetail);
+                string tmp = "We hope you will find above rates in line with your requirement. We assure you of our best services with maximum technical supports at all times.";
+                //tblFootDetail.AddCell(pdf.setCell(tmp, pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf4, 2, Element.ALIGN_LEFT, Element.ALIGN_TOP, Rectangle.NO_BORDER));
+
+                //var phrase1 = new Phrase();
+                //phrase1.Add(new Chunk("1. ", pdf.fnCalibri8));
+                //phrase1.Add(new Chunk("Kotak Bank", pdf.fnCalibriBold8));
+                //phrase1.Add(new Chunk(", A/c No : 0911539231, IFSC: KKBK0000159, Swift Code: KKBKINBB, Maninagar, Ahmedabad.", pdf.fnCalibri8));
+
+                //var phrase2 = new Phrase();
+                //phrase2.Add(new Chunk("2. ", pdf.fnCalibri8));
+                //phrase2.Add(new Chunk("Bank Of Baroda", pdf.fnCalibriBold8));
+                //phrase2.Add(new Chunk(", A/c No : 50590200000121, IFSC: BARB0RAMAHM, Swift Code: BARBINBBVAT, Ramol, Ahmedabad.", pdf.fnCalibri8));
+
+                //tblFootDetail.AddCell(pdf.setCell("Company's VAT TIN", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                //tblFootDetail.AddCell(pdf.setCell(": 24080101933", pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+
+                //tblFootDetail.AddCell(pdf.setCell("Company's CST No.", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                //tblFootDetail.AddCell(pdf.setCell(": 24580101933", pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+
+                //tblFootDetail.AddCell(pdf.setCell("Company's PAN", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                //tblFootDetail.AddCell(pdf.setCell(": AAFCS 7383 C", pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+
+                tblFootDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf2, 2, Element.ALIGN_LEFT, Element.ALIGN_BOTTOM, Rectangle.NO_BORDER));
+                tblFootDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf2, 2, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                tblFootDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf2, 2, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                tblFootDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf2, 2, Element.ALIGN_LEFT, Element.ALIGN_BOTTOM, Rectangle.NO_BORDER));
+                tblFootDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf2, 2, Element.ALIGN_LEFT, Element.ALIGN_BOTTOM, Rectangle.NO_BORDER));
+                tblFootDetail.AddCell(pdf.setCell(" ", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf2, 2, Element.ALIGN_LEFT, Element.ALIGN_BOTTOM, Rectangle.NO_BORDER));
+
+
+                // ---------------------------------------------------
+                //PdfPTable tblBankDetails = new PdfPTable(2);
+                //int[] column_tblBankDetails = { 30, 70 };
+                //tblBankDetails.SetWidths(column_tblBankDetails);
+
+                //tblBankDetails.AddCell(pdf.setCell("Company's Bank Details:", pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf2, 2, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                //tblBankDetails.AddCell(pdf.setCell("Bank Name", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                //tblBankDetails.AddCell(pdf.setCell(": " + lstQuot[0].BankName, pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                //tblBankDetails.AddCell(pdf.setCell("A/c No.", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                //tblBankDetails.AddCell(pdf.setCell(": " + lstQuot[0].BankAccountNo, pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                //tblBankDetails.AddCell(pdf.setCell("Branch", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                //tblBankDetails.AddCell(pdf.setCell(": " + lstQuot[0].BranchName, pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                //tblBankDetails.AddCell(pdf.setCell("IFSC Code", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                //tblBankDetails.AddCell(pdf.setCell(": " + lstQuot[0].BankIFSC, pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                PdfPTable tblESignature1 = new PdfPTable(1);
+                int[] column_tblESignature1 = { 100 };
+                tblESignature.SetWidths(column_tblESignature1);
+                int fileCount1 = 0;
+                string tmpFile1 = System.Web.Hosting.HostingEnvironment.MapPath("~/images") + "\\eSignature.png";
+                //string tmpFile1 = System.Web.Hosting.HostingEnvironment.MapPath("~/images") + "\\eStamp.png";
+
+                if (File.Exists(tmpFile1))
+                {
+                    if (File.Exists(tmpFile1))   //Signature print
+                    {
+                        PdfPTable tblSign1 = new PdfPTable(1);
+                        //int[] column_tblSign = { 30 };
+                        //tblSign.SetWidths(column_tblSign);
+
+                        iTextSharp.text.Image eSign1 = iTextSharp.text.Image.GetInstance(tmpFile1);
+                        eSign1.ScaleAbsolute(80, 50);
+                        tblSign1.AddCell(pdf.setCell("Authorized Signatory ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                        tblSign1.AddCell(pdf.setCellFixImage(eSign1, pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                        tblSign1.AddCell(pdf.setCell(objAuth.CompanyName, pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                        tblESignature1.AddCell(pdf.setCell(tblSign1, pdf.WhiteBaseColor, pdf.objContentFontDataBlack, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                        fileCount1 = fileCount1 + 1;
+                    }
+                }
+                else
+                {
+                    tblESignature1.AddCell(pdf.setCell("Authorized Signatory ", pdf.WhiteBaseColor, pdf.fnCalibri9, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                    tblESignature1.AddCell(pdf.setCell(objAuth.CompanyName, pdf.WhiteBaseColor, pdf.fnCalibriBold9, pdf.paddingOf2, 1, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, Rectangle.NO_BORDER));
+                }
+
+                // ---------------------------------------------------
+                int[] column_tblFooter = { 70, 30 };
+                tblFooter.SetWidths(column_tblFooter);
+                tblFooter.SpacingBefore = 0f;
+                tblFooter.LockedWidth = true;
+                tblFooter.HorizontalAlignment = Element.ALIGN_JUSTIFIED;
+
+                if (lstTax[0].IGSTAmt > 0)
+                {
+                    tblIGST.AddCell(pdf.setCell("Total Tax(in words)                                                                                                     E. & O.E.", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf4, 9, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                    tblIGST.AddCell(pdf.setCell("Indian Rupees " + BAL.CommonMgmt.ConvertNumbertoWords((int)TaxAmount) + " Only", pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf4, 9, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                    tblFooter.AddCell(pdf.setCell(tblIGST, pdf.WhiteBaseColor, pdf.fnCalibri8, 0, 2, Element.ALIGN_LEFT, Element.ALIGN_BOTTOM, 14));
+                }
+                else
+                {
+                    tblCSGST.AddCell(pdf.setCell("Total Tax(in words)                                                                                                   E. & O.E.", pdf.WhiteBaseColor, pdf.fnCalibri8, pdf.paddingOf4, 9, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 13));
+                    tblCSGST.AddCell(pdf.setCell("Indian Rupees " + BAL.CommonMgmt.ConvertNumbertoWords((int)TaxAmount) + " Only", pdf.WhiteBaseColor, pdf.fnCalibriBold8, pdf.paddingOf4, 9, Element.ALIGN_LEFT, Element.ALIGN_MIDDLE, 12));
+                    tblFooter.AddCell(pdf.setCell(tblCSGST, pdf.WhiteBaseColor, pdf.fnCalibri8, 0, 2, Element.ALIGN_LEFT, Element.ALIGN_BOTTOM, 14));
+                }
+                tblFooter.AddCell(pdf.setCell(tblFootDetail, pdf.WhiteBaseColor, pdf.fnCalibri8, 0, 1, Element.ALIGN_LEFT, Element.ALIGN_BOTTOM, 15));
+                tblFooter.AddCell(pdf.setCell(tblESignature1, pdf.WhiteBaseColor, pdf.fnCalibriBold8, 0, 1, Element.ALIGN_LEFT, Element.ALIGN_BOTTOM, 15));
+                // -------------------------------------------------------------------------------------
+                //  Defining : Sign Off
+                // -------------------------------------------------------------------------------------
+                tblSignOff.SpacingBefore = 0f;
+                tblSignOff.LockedWidth = true;
+                tblSignOff.HorizontalAlignment = Element.ALIGN_JUSTIFIED;
+                //tblSignOff.AddCell(pdf.setCell("SUBJECT TO AHMEDABAD JURISDICTION", pdf.WhiteBaseColor, pdf.fnCalibri10, pdf.paddingOf2, 1, Element.ALIGN_CENTER, Element.ALIGN_MIDDLE, 15));
+                #endregion
+            }
+            htmlClose = "</body></html>";
+
+            // =*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
+            //string sPath = System.Web.Hosting.HostingEnvironment.MapPath("~/PDF/");
+            //string sFileName = "SalesOrder_" + lstQuot[0].pkID.ToString() + ".pdf";
+
+            string sPath = System.Web.Hosting.HostingEnvironment.MapPath("~/PDF/");
+            string sFileName = lstQuot[0].QuotationNo.Replace("/", "-").ToString() + ".pdf";
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            // Header & Footer ..... Settings
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            ITextEvents clHeaderFooter = new ITextEvents();
+            pdfw.PageEvent = clHeaderFooter;
+            //clHeaderFooter.Title = lstEntity[0].OrgName;
+            clHeaderFooter.HeaderFont = pdf.objHeaderFont18;
+            clHeaderFooter.FooterFont = pdf.objFooterFont;
+            //clHeaderFooter.FooterText = lstEntity[0].OrgAddress;
+            //clHeaderFooter.WallPaper = Server.MapPath("images/Sanpar_Logo.png");
+            iTextSharp.text.html.simpleparser.HTMLWorker htmlparser = new iTextSharp.text.html.simpleparser.HTMLWorker(pdfDoc);
+
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            // Declaring Stylesheet ......
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            StyleSheet objStyle = new StyleSheet();
+            objStyle.LoadTagStyle("body", "font-family", "Arial, Helvetica, sans-serif");
+            objStyle.LoadTagStyle("body", "font-size", "12pt");
+            objStyle.LoadTagStyle("body", "color", "black");
+            objStyle.LoadTagStyle("body", "position", "relative");
+            objStyle.LoadTagStyle("body", "margin", "0 auto");
+
+            htmlparser.SetStyleSheet(objStyle);
+
+            // ------------------------------------------------------------------------------------------------
+            // pdfDOC >>> Open
+            // ------------------------------------------------------------------------------------------------
+            pdfDoc.Open();
+
+
+            // >>>>>> Opening : HTML & BODY
+            htmlparser.Parse(new StringReader((htmlOpen.ToString()).Replace("\r", "").Replace("\n", "").Replace("  ", "")));
+
+            // >>>>>> Adding Organization Name 
+            //tableHeader.TotalWidth = (pdfDoc.PageSize.Width - (pdfDoc.LeftMargin + pdfDoc.RightMargin));
+            //pdfDoc.Add(tableHeader);
+
+            // >>>>>> Adding Quotation Header
+            tblSubject.TotalWidth = (pdfDoc.PageSize.Width - (pdfDoc.LeftMargin + pdfDoc.RightMargin));
+            tblSubject.HorizontalAlignment = Element.ALIGN_JUSTIFIED;
+            pdfDoc.Add(tblSubject);
+
+            // >>>>>> Adding Quotation Master Information Table
+            tblMember.TotalWidth = (pdfDoc.PageSize.Width - (pdfDoc.LeftMargin + pdfDoc.RightMargin));
+            tblMember.HorizontalAlignment = Element.ALIGN_CENTER;
+            pdfDoc.Add(tblMember);
+
+
+            // >>>>>> Adding Quotation Header
+            tblHeader.TotalWidth = (pdfDoc.PageSize.Width - (pdfDoc.LeftMargin + pdfDoc.RightMargin));
+            tblHeader.HorizontalAlignment = Element.ALIGN_JUSTIFIED;
+            pdfDoc.Add(tblHeader);
+
+            // >>>>>> Adding Quotation Detail Table
+            tblDetail.TotalWidth = (pdfDoc.PageSize.Width - (pdfDoc.LeftMargin + pdfDoc.RightMargin));
+            tblDetail.HorizontalAlignment = Element.ALIGN_CENTER;
+            pdfDoc.Add(tblDetail);
+
+            // >>>>>> Adding Quotation Footer
+            tblFooter.TotalWidth = (pdfDoc.PageSize.Width - (pdfDoc.LeftMargin + pdfDoc.RightMargin));
+            tblFooter.HorizontalAlignment = Element.ALIGN_JUSTIFIED;
+            pdfDoc.Add(tblFooter);
+
+            // >>>>>> Adding Quotation Header
+            tblSignOff.TotalWidth = (pdfDoc.PageSize.Width - (pdfDoc.LeftMargin + pdfDoc.RightMargin));
+            tblSignOff.HorizontalAlignment = Element.ALIGN_JUSTIFIED;
+            pdfDoc.Add(tblSignOff);
+
+            // >>>>>> Closing : HTML & BODY
+            htmlparser.Parse(new StringReader((htmlClose.ToString()).Replace("\r", "").Replace("\n", "").Replace("  ", "")));
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            pdfDoc.Close();
+            pdfDoc.Dispose();
+            string smallFileName = HttpContext.Current.Session["LoginUserID"].ToString() + "-Tempsmall.pdf";
+            byte[] content = ms.ToArray();
+            FileStream fs = new FileStream(sPath + smallFileName, FileMode.Create);
+            fs.Write(content, 0, (int)content.Length);
+            fs.Close();
+            fs.Dispose();
+            string pdfFileName = "";
+            pdfFileName = sPath + sFileName;
+
+            myPdfConstruct.RecompressPDF(sPath + smallFileName, pdfFileName);
+        }
